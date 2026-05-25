@@ -30,5 +30,7 @@ namespace Lab4.Service
                 return (false, "Amount must be greater than zero.");
             return (true, string.Empty);
         }
+
+        
     }
 }
