@@ -11,8 +11,7 @@ namespace BlockChain.Service
     {
         public string ComputeHash(Block block)
         {
-            string transactionsData = string.Concat(block.Transactions.Select(t => t.ToRowString()).ToArray());
-            var input = $"{block.Index}{block.Timestamp}{transactionsData}{block.PreviousHash}{block.Nonce}";
+            var input = $"{block.Index}{block.Timestamp}{block.Data}{block.Author}{block.PreviousHash}{block.Nonce}";
             return ComputeSha256(input);
         }
 

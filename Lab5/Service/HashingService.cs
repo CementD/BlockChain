@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using BlockChain.Models;
+using Lab5.Models;
 
-namespace BlockChain.Service
+namespace Lab5.Service
 {
     public class HashingService
     {

@@ -1,11 +1,11 @@
-﻿using BlockChain.Models;
+﻿using Lab4.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BlockChain.Service
+namespace Lab4.Service
 {
     public class BlockChainService
     {
@@ -14,21 +14,17 @@ namespace BlockChain.Service
 
         private readonly int _adjustmentInterval = 2;
         private readonly double _targetBlockTime = 5;
-        public  List<Transaction> PendingTransactions { get; set; }
-        public decimal MiningReward { get; set; } = 50;
+        public const int MaxTransactionsPerBlock = 3;
 
 
         private readonly HashingService _hashingService;
         private readonly MiningService _miningService;
-        private readonly TransactionService _transactionService;
         public BlockChainService()
         {
             Chain = new List<Block>();
             _hashingService = new HashingService();
             CreateGenesisBlock();
             _miningService = new MiningService();
-            _transactionService = new TransactionService();
-            PendingTransactions = new List<Transaction>();
         }
 
         private void CreateGenesisBlock()
@@ -37,21 +33,18 @@ namespace BlockChain.Service
             genesisBlock.Hash = _hashingService.ComputeHash(genesisBlock);
             Chain.Add(genesisBlock);
         }
-
-        public void MinePendingTransactions(string minerAddress)
+        public void AddBlock(List<Transaction> data)
         {
-            var rewardTransaction = new Transaction("COINBASE", minerAddress, MiningReward);
-
+            if (data.Count > MaxTransactionsPerBlock)
+            {
+                throw new ArgumentException($"A block can contain a maximum of {MaxTransactionsPerBlock} transactions.");
+            }
             var previousBlock = Chain.Last();
-            var totalTransactions = new List<Transaction>(PendingTransactions) { rewardTransaction };
-            var newBlock = new Block(previousBlock.Index + 1, totalTransactions, previousBlock.Hash);
-
+            var newBlock = new Block(previousBlock.Index + 1, data, previousBlock.Hash);
             newBlock.Difficulty = Difficulty;
             _miningService.MineBlock(newBlock, Difficulty);
+            
             Chain.Add(newBlock);
-
-            PendingTransactions.Clear();
-
             if (newBlock.Index % _adjustmentInterval == 0)
             {
                 AdjustDifficulty();
@@ -90,6 +83,12 @@ namespace BlockChain.Service
                     return false;
                 if (!currentBlock.Hash.StartsWith(new string('0', currentBlock.Difficulty)))
                     return false;
+                if (currentBlock.Timestamp <= previousBlock.Timestamp)
+                    return false;
+                if (currentBlock.Transactions.Count > MaxTransactionsPerBlock)
+                    return false;
+                if (currentBlock.Timestamp > DateTime.Now.AddMinutes(1))
+                    return false;
             }
             return true;
         }
@@ -116,15 +115,6 @@ namespace BlockChain.Service
                 currentBlock.PreviousHash = previousBlock.Hash;
                 currentBlock.Hash = _hashingService.ComputeHash(currentBlock);
             }
-        }
-
-        public void AddTransaction(Transaction transaction)
-        {
-            if (!_transactionService.ValidateTransaction(transaction).isValid)
-            {
-                throw new ArgumentException($"Invalid transaction from {transaction.From} to {transaction.To} for amount {transaction.Amount}");
-            }
-            PendingTransactions.Add(transaction);
         }
     }
 }

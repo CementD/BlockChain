@@ -1,11 +1,11 @@
-﻿using BlockChain.Models;
+﻿using Lab5.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BlockChain.Service
+namespace Lab5.Service
 {
     public class BlockChainService
     {
@@ -14,8 +14,6 @@ namespace BlockChain.Service
 
         private readonly int _adjustmentInterval = 2;
         private readonly double _targetBlockTime = 5;
-        public  List<Transaction> PendingTransactions { get; set; }
-        public decimal MiningReward { get; set; } = 50;
 
 
         private readonly HashingService _hashingService;
@@ -28,7 +26,6 @@ namespace BlockChain.Service
             CreateGenesisBlock();
             _miningService = new MiningService();
             _transactionService = new TransactionService();
-            PendingTransactions = new List<Transaction>();
         }
 
         private void CreateGenesisBlock()
@@ -37,21 +34,27 @@ namespace BlockChain.Service
             genesisBlock.Hash = _hashingService.ComputeHash(genesisBlock);
             Chain.Add(genesisBlock);
         }
-
-        public void MinePendingTransactions(string minerAddress)
+        public void AddBlock(List<Transaction> data)
         {
-            var rewardTransaction = new Transaction("COINBASE", minerAddress, MiningReward);
+            foreach (var tx in data)
+            {
+                if (!_transactionService.ValidateTransaction(tx).isValid)
+                {
+                    throw new ArgumentException("Invalid transaction in block data.");
+                }
+                if (TransactionExists(tx.Id))
+                {
+                    Console.WriteLine($"Warning: Transaction with ID {tx.Id} already exists in the blockchain. Skipping duplicate transaction.");
+                    return;
+                }
+            }
+
 
             var previousBlock = Chain.Last();
-            var totalTransactions = new List<Transaction>(PendingTransactions) { rewardTransaction };
-            var newBlock = new Block(previousBlock.Index + 1, totalTransactions, previousBlock.Hash);
-
+            var newBlock = new Block(previousBlock.Index + 1, data, previousBlock.Hash);
             newBlock.Difficulty = Difficulty;
             _miningService.MineBlock(newBlock, Difficulty);
             Chain.Add(newBlock);
-
-            PendingTransactions.Clear();
-
             if (newBlock.Index % _adjustmentInterval == 0)
             {
                 AdjustDifficulty();
@@ -118,13 +121,16 @@ namespace BlockChain.Service
             }
         }
 
-        public void AddTransaction(Transaction transaction)
+        public bool TransactionExists(int id)
         {
-            if (!_transactionService.ValidateTransaction(transaction).isValid)
+            foreach (var block in Chain)
             {
-                throw new ArgumentException($"Invalid transaction from {transaction.From} to {transaction.To} for amount {transaction.Amount}");
+                if (block.Transactions.Any(tx => tx.Id == id))
+                {
+                    return true;
+                }
             }
-            PendingTransactions.Add(transaction);
+            return false;
         }
     }
 }

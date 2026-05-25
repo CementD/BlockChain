@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BlockChain.Service
+namespace Lab5.Service
 {
     public class BlockChainDisplayService
     {
@@ -44,6 +44,7 @@ namespace BlockChain.Service
                 Console.WriteLine($"From: {tx.From}");
                 Console.WriteLine($"To: {tx.To}");
                 Console.WriteLine($"Amount: {tx.Amount}");
+                Console.WriteLine($"Memo: {tx.Memo}");
                 Console.WriteLine(new string('-', 20));
             }
         }

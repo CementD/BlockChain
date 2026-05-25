@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BlockChain.Service
+namespace Lab6.Service
 {
     public class BlockChainDisplayService
     {

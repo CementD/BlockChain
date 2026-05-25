@@ -1,11 +1,11 @@
-﻿using BlockChain.Models;
+﻿using Lab6.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BlockChain.Service
+namespace Lab6.Service
 {
     public class BlockChainService
     {
@@ -16,6 +16,9 @@ namespace BlockChain.Service
         private readonly double _targetBlockTime = 5;
         public  List<Transaction> PendingTransactions { get; set; }
         public decimal MiningReward { get; set; } = 50;
+
+        public int maxTransactionsBlock = 5;
+        public int maxPendingTransactionsPerUser = 2;
 
 
         private readonly HashingService _hashingService;
@@ -42,15 +45,18 @@ namespace BlockChain.Service
         {
             var rewardTransaction = new Transaction("COINBASE", minerAddress, MiningReward);
 
+            var transactionsToMine = PendingTransactions.Take(maxTransactionsBlock - 1).ToList();
+
             var previousBlock = Chain.Last();
-            var totalTransactions = new List<Transaction>(PendingTransactions) { rewardTransaction };
+
+            var totalTransactions = new List<Transaction>(transactionsToMine) { rewardTransaction };
             var newBlock = new Block(previousBlock.Index + 1, totalTransactions, previousBlock.Hash);
 
             newBlock.Difficulty = Difficulty;
             _miningService.MineBlock(newBlock, Difficulty);
             Chain.Add(newBlock);
 
-            PendingTransactions.Clear();
+            PendingTransactions = PendingTransactions.Skip(transactionsToMine.Count).ToList();
 
             if (newBlock.Index % _adjustmentInterval == 0)
             {
@@ -123,6 +129,14 @@ namespace BlockChain.Service
             if (!_transactionService.ValidateTransaction(transaction).isValid)
             {
                 throw new ArgumentException($"Invalid transaction from {transaction.From} to {transaction.To} for amount {transaction.Amount}");
+            }
+            if (PendingTransactions.Count(tx => tx.From == transaction.From) >= maxPendingTransactionsPerUser)
+            {
+                throw new InvalidOperationException($"User {transaction.From} has too many pending transactions.");
+            }
+            if (Chain.Any(block => block.Transactions.Any(tx => tx.Id == transaction.Id)))
+            {
+                throw new InvalidOperationException($"Transaction with ID {transaction.Id} already exists in the blockchain.");
             }
             PendingTransactions.Add(transaction);
         }

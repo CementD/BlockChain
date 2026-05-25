@@ -10,17 +10,18 @@ namespace BlockChain.Models
     {
         public int Index { get; set; }
         public DateTime Timestamp { get; set; }
-        public List<Transaction> Transactions { get; set; }
+        public string Data { get; set; } = string.Empty;
+        public string Author { get; set; }
         public string Hash { get; set; }
         public string PreviousHash { get; set; }
         public long Nonce { get; set; }
-        public int Difficulty { get; set; }
 
-        public Block(int index, List<Transaction> transactions, string previousHash)
+        public Block(int index, string data, string author, string previousHash)
         {
             Index = index;
             Timestamp = DateTime.Now;
-            Transactions = transactions;
+            Data = data;
+            Author = author;
             PreviousHash = previousHash;
             Hash = "";
         }

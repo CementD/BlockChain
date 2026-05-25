@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BlockChain.Models
+namespace Lab6.Models
 {
     public class Block
     {

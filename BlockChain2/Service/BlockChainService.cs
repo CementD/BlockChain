@@ -11,72 +11,28 @@ namespace BlockChain.Service
     {
         public List<Block> Chain { get; set; }
         public int Difficulty { get; set; } = 3;
-
-        private readonly int _adjustmentInterval = 2;
-        private readonly double _targetBlockTime = 5;
-        public  List<Transaction> PendingTransactions { get; set; }
-        public decimal MiningReward { get; set; } = 50;
-
-
         private readonly HashingService _hashingService;
         private readonly MiningService _miningService;
-        private readonly TransactionService _transactionService;
         public BlockChainService()
         {
             Chain = new List<Block>();
             _hashingService = new HashingService();
             CreateGenesisBlock();
             _miningService = new MiningService();
-            _transactionService = new TransactionService();
-            PendingTransactions = new List<Transaction>();
         }
 
         private void CreateGenesisBlock()
         {
-            var genesisBlock = new Block(0, new List<Transaction>(), "0");
+            var genesisBlock = new Block(0, "", "", "0");
             genesisBlock.Hash = _hashingService.ComputeHash(genesisBlock);
             Chain.Add(genesisBlock);
         }
-
-        public void MinePendingTransactions(string minerAddress)
+        public void AddBlock(string data, string author)
         {
-            var rewardTransaction = new Transaction("COINBASE", minerAddress, MiningReward);
-
             var previousBlock = Chain.Last();
-            var totalTransactions = new List<Transaction>(PendingTransactions) { rewardTransaction };
-            var newBlock = new Block(previousBlock.Index + 1, totalTransactions, previousBlock.Hash);
-
-            newBlock.Difficulty = Difficulty;
+            var newBlock = new Block(previousBlock.Index + 1, data, author, previousBlock.Hash);
             _miningService.MineBlock(newBlock, Difficulty);
             Chain.Add(newBlock);
-
-            PendingTransactions.Clear();
-
-            if (newBlock.Index % _adjustmentInterval == 0)
-            {
-                AdjustDifficulty();
-            }
-        }
-
-        private void AdjustDifficulty()
-        {
-            var recentBlock = Chain.Where(x => x.Index > 0).TakeLast(_adjustmentInterval).ToList(); 
-
-            if (recentBlock.Count == 0)
-            {
-                return;
-            }
-
-            double averageTime = recentBlock.Average(x => (x.Timestamp - Chain[x.Index - 1].Timestamp).TotalSeconds);
-
-            if (averageTime < _targetBlockTime) 
-            {
-                Difficulty++;
-            }
-            else if (averageTime > _targetBlockTime) 
-            {
-                Difficulty = Math.Max(1, Difficulty - 1);
-            }
         }
         public bool IsChainValid()
         {
@@ -88,7 +44,7 @@ namespace BlockChain.Service
                     return false;
                 if (currentBlock.PreviousHash != previousBlock.Hash)
                     return false;
-                if (!currentBlock.Hash.StartsWith(new string('0', currentBlock.Difficulty)))
+                if (!currentBlock.Hash.StartsWith(new string('0', Difficulty)))
                     return false;
             }
             return true;
@@ -116,15 +72,6 @@ namespace BlockChain.Service
                 currentBlock.PreviousHash = previousBlock.Hash;
                 currentBlock.Hash = _hashingService.ComputeHash(currentBlock);
             }
-        }
-
-        public void AddTransaction(Transaction transaction)
-        {
-            if (!_transactionService.ValidateTransaction(transaction).isValid)
-            {
-                throw new ArgumentException($"Invalid transaction from {transaction.From} to {transaction.To} for amount {transaction.Amount}");
-            }
-            PendingTransactions.Add(transaction);
         }
     }
 }
