@@ -1,7 +1,7 @@
-﻿using Lab5.Models;
+﻿using BlockChain.Models;
 using System.Security.Cryptography;
 
-namespace Lab5.Service
+namespace BlockChain.Service
 {
     public class WalletService
     {
@@ -35,29 +35,6 @@ namespace Lab5.Service
             using var ecdsa = System.Security.Cryptography.ECDsa.Create();
             ecdsa.ImportSubjectPublicKeyInfo(publicKey, out _);
             return ecdsa.VerifyData(data, signature, System.Security.Cryptography.HashAlgorithmName.SHA256);
-        }
-
-        public bool IsPublicKeyMatchingAddress(byte[] publicKey, string address)
-        {
-            int attempts = 0;
-
-            while (true)
-            {
-                var newPublicKey = publicKey.Concat(BitConverter.GetBytes(attempts)).ToArray();
-                string calculatedAddress = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(newPublicKey));
-
-                if (calculatedAddress == address)
-                {
-                    return true;
-                }
-
-                if (calculatedAddress.StartsWith("000"))
-                {
-                    return false;
-                }
-
-                attempts++;
-            }
         }
     }
 }

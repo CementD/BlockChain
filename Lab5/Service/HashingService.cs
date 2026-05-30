@@ -16,7 +16,7 @@ namespace Lab5.Service
             return ComputeSha256(input);
         }
 
-        private string ComputeSha256(string input)
+        public string ComputeSha256(string input)
             {
                 using (var sha256 = System.Security.Cryptography.SHA256.Create())
                 {

@@ -10,9 +10,11 @@ namespace Lab5.Service
     public class TransactionService
     {
         private readonly WalletService _walletService;
+        private readonly HashingService _hashingService;
         public TransactionService()
         {
             _walletService = new WalletService();
+            _hashingService = new HashingService();
         }
         public Transaction CreateTransaction(Wallet sender, string to, decimal amount, string memo)
         {
@@ -37,7 +39,12 @@ namespace Lab5.Service
                 return (false, "Amount must be greater than zero.");
             if (transaction.SenderPublicKey == null || transaction.Signature == null)
                 return (false, "Transaction must be signed.");
-            
+
+            if (!_walletService.IsPublicKeyMatchingAddress(transaction.SenderPublicKey, transaction.From))
+            {
+                return (false, "Sender public key does not match sender address (PoW verification failed).");
+            }
+
             bool signatureValid = _walletService.VerifySignature(
                 transaction.GetDataToSign(),
                 transaction.Signature,

@@ -16,7 +16,7 @@ namespace BlockChain.Service
             return ComputeSha256(input);
         }
 
-        public string ComputeSha256(string input)
+        private string ComputeSha256(string input)
             {
                 using (var sha256 = System.Security.Cryptography.SHA256.Create())
                 {

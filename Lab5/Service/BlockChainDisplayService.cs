@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Lab5.Models;
 
 namespace Lab5.Service
 {
@@ -47,6 +48,28 @@ namespace Lab5.Service
                 Console.WriteLine($"Memo: {tx.Memo}");
                 Console.WriteLine(new string('-', 20));
             }
+        }
+
+        public void PrintWalletCard(Wallet wallet)
+        {
+            if (wallet == null) return;
+
+            string publicKeyHex = Convert.ToHexString(wallet.PublicKey);
+
+            string shortKey = publicKeyHex.Length > 20 ? publicKeyHex.Substring(0, 20) + "..." : publicKeyHex;
+
+            string nameLine = $" Owner:   {wallet.Name}";
+            string addrLine = $" Address: {wallet.Address}";
+            string keyLine = $" Public key:  {shortKey}";
+
+            int maxContentLength = Math.Max(nameLine.Length, Math.Max(addrLine.Length, keyLine.Length)) + 2;
+
+            Console.WriteLine("╔" + new string('═', maxContentLength) + "╗");
+            Console.WriteLine("║" + nameLine.PadRight(maxContentLength) + "║");
+            Console.WriteLine("║" + addrLine.PadRight(maxContentLength) + "║");
+            Console.WriteLine("║" + keyLine.PadRight(maxContentLength) + "║");
+            Console.WriteLine("╚" + new string('═', maxContentLength) + "╝");
+            Console.WriteLine();
         }
     }
 }
