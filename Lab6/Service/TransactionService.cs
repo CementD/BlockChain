@@ -14,9 +14,9 @@ namespace Lab6.Service
         {
             _walletService = new WalletService();
         }
-        public Transaction CreateTransaction(Wallet sender, string to, decimal amount)
+        public Transaction CreateTransaction(Wallet sender, string to, decimal amount, decimal fee)
         {
-            var tx =  new Transaction(sender.Address, to, amount);
+            var tx =  new Transaction(sender.Address, to, amount, fee);
             tx.SenderPublicKey = sender.PublicKey;
             tx.Signature = sender.Sign(tx.GetDataToSign());
             if (ValidateTransaction(tx).isValid) {

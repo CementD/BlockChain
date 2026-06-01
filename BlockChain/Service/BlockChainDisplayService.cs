@@ -41,6 +41,7 @@ namespace BlockChain.Service
         {
             foreach (var tx in transactions)
             {
+                Console.WriteLine($"Transaction ID: {tx.Id}");
                 Console.WriteLine($"From: {tx.From}");
                 Console.WriteLine($"To: {tx.To}");
                 Console.WriteLine($"Amount: {tx.Amount}");

@@ -44,6 +44,9 @@ namespace Lab6.Service
                 Console.WriteLine($"From: {tx.From}");
                 Console.WriteLine($"To: {tx.To}");
                 Console.WriteLine($"Amount: {tx.Amount}");
+                Console.WriteLine($"TimeStamp: {tx.TimeStamp}");
+                Console.WriteLine($"Fee: {tx.Fee}");
+                Console.WriteLine($"Size: {tx.Size} bytes");
                 Console.WriteLine(new string('-', 20));
             }
         }

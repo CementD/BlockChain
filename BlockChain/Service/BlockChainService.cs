@@ -16,14 +16,16 @@ namespace BlockChain.Service
         private readonly double _targetBlockTime = 5;
         public List<Transaction> PendingTransactions { get; set; }
         public decimal MiningReward { get; set; } = 50;
+        public int MaxTransactionsPerBlock { get; set; } = 5;
 
-        public decimal MinFeePerByte { get; set; } = 0.05m;
+        public decimal MinFeePerByte { get; set; } = 0.0005m;
 
-        public int MaxBlockSizeBytes { get; set; } = 500;
+        public int MaxBlockSizeBytes { get; set; } = 1000;
 
         private readonly HashingService _hashingService;
         private readonly MiningService _miningService;
         private readonly TransactionService _transactionService;
+        private readonly FileService _fileService = new FileService();
         public BlockChainService()
         {
             Chain = new List<Block>();
@@ -31,7 +33,26 @@ namespace BlockChain.Service
             CreateGenesisBlock();
             _miningService = new MiningService();
             _transactionService = new TransactionService();
-            PendingTransactions = new List<Transaction>();
+            _fileService = new FileService();
+
+            var loadChain = _fileService.LoadChain();
+            if (loadChain.Any())
+            {
+                Chain = loadChain;
+            }
+
+            string memPoolFilePath = "mempool.json";
+            if (File.Exists(memPoolFilePath))
+            {
+                var json = File.ReadAllText(memPoolFilePath);
+                var pendingTransactions = System.Text.Json.JsonSerializer.Deserialize<List<Transaction>>(json);
+                if (pendingTransactions != null)
+                    PendingTransactions = pendingTransactions;
+            }
+            if (PendingTransactions == null)
+            {
+                PendingTransactions = new List<Transaction>();
+            }
         }
 
         private void CreateGenesisBlock()
@@ -41,52 +62,80 @@ namespace BlockChain.Service
             Chain.Add(genesisBlock);
         }
 
+        //public void MinePendingTransactions(string minerAddress)
+        //{
+        //    var previousBlock = Chain.Last();
+
+        //    var totalFees = PendingTransactions.OrderByDescending(tx => tx.Fee).Take(MaxTransactionsPerBlock);
+
+
+        //    var rewardTransaction = new Transaction(
+        //        "COINBASE",
+        //        minerAddress,
+        //        MiningReward + totalFees.Sum(tx => tx.Fee),
+        //        0
+        //    );
+
+        //    int remainingSize = MaxBlockSizeBytes - rewardTransaction.Size;
+
+        //    var transactionsToInclude = new List<Transaction>
+        //    {
+        //        rewardTransaction
+        //    };
+
+        //    var sortedTransactions = PendingTransactions
+        //        .OrderByDescending(tx => tx.Fee / (decimal)tx.Size)
+        //        .ToList();
+
+        //    foreach (var tx in sortedTransactions)
+        //    {
+        //        if (tx.Size <= remainingSize)
+        //        {
+        //            transactionsToInclude.Add(tx);
+        //            remainingSize -= tx.Size;
+        //        }
+        //    }
+
+        //    var newBlock = new Block(
+        //        previousBlock.Index + 1,
+        //        transactionsToInclude,
+        //        previousBlock.Hash
+        //    );
+
+        //    newBlock.Difficulty = Difficulty;
+
+        //    _miningService.MineBlock(newBlock, Difficulty);
+
+        //    Chain.Add(newBlock);
+
+        //    PendingTransactions.RemoveAll(tx => transactionsToInclude.Contains(tx));
+
+        //    if (newBlock.Index % _adjustmentInterval == 0)
+        //    {
+        //        AdjustDifficulty();
+        //    }
+        //}
+
         public void MinePendingTransactions(string minerAddress)
         {
             var previousBlock = Chain.Last();
+            var transactions = PendingTransactions.OrderByDescending(x => x.Fee).Take(MaxTransactionsPerBlock).ToList();
+            var rewardTransaction = new Transaction("COINBASE", minerAddress, MiningReward + transactions.Sum(t => t.Fee), 0);
+            transactions.Add(rewardTransaction);
 
-            var totalFees = PendingTransactions.Sum(tx => tx.Fee);
-
-            var rewardTransaction = new Transaction(
-                "COINBASE",
-                minerAddress,
-                MiningReward + totalFees,
-                0
-            );
-
-            int remainingSize = MaxBlockSizeBytes - rewardTransaction.Size;
-
-            var transactionsToInclude = new List<Transaction>
-            {
-                rewardTransaction
-            };
-
-            var sortedTransactions = PendingTransactions
-                .OrderByDescending(tx => tx.Fee / (decimal)tx.Size)
-                .ToList();
-
-            foreach (var tx in sortedTransactions)
-            {
-                if (tx.Size <= remainingSize)
-                {
-                    transactionsToInclude.Add(tx);
-                    remainingSize -= tx.Size;
-                }
-            }
-
-            var newBlock = new Block(
-                previousBlock.Index + 1,
-                transactionsToInclude,
-                previousBlock.Hash
-            );
-
+            var newBlock = new Block(previousBlock.Index + 1, transactions, previousBlock.Hash);
             newBlock.Difficulty = Difficulty;
-
             _miningService.MineBlock(newBlock, Difficulty);
-
             Chain.Add(newBlock);
 
-            PendingTransactions.Clear();
+            _fileService.SaveChainToFile(Chain);
+
+            foreach (var tx in transactions)
+            {
+                PendingTransactions.Remove(tx);
+            }
+
+            SaveMemPool();
 
             if (newBlock.Index % _adjustmentInterval == 0)
             {
@@ -175,9 +224,10 @@ namespace BlockChain.Service
                 }
             }
             PendingTransactions.Add(transaction);
+            SaveMemPool();
         }
 
-        private decimal GetBalance(string address)
+        public decimal GetBalance(string address)
         {
             decimal balance = 0;
             foreach (var block in Chain)
@@ -211,6 +261,55 @@ namespace BlockChain.Service
                     balance += transaction.Amount;
                 }
             }
+            return balance;
+        }
+
+        private void SaveMemPool()
+        {
+            string memPoolFilePath = "mempool.json";
+            var json = System.Text.Json.JsonSerializer.Serialize(PendingTransactions);
+            System.IO.File.WriteAllText(memPoolFilePath, json);
+        }
+
+        public int GetTransactionConfirmations(int transactionId)
+        {
+            int confirmations = 0;
+            foreach (var block in Chain)
+            {
+                if (block.Transactions.Any(t => t.Id == transactionId))
+                {
+                    confirmations = Chain.Count - block.Index;
+                    break;
+                }
+            }
+            return confirmations;
+        }
+
+        public decimal GetSafeBalance(string address, int requiredConfirmations = 3)
+        {
+            decimal balance = 0;
+
+            foreach (var block in Chain)
+            {
+                // Перевіряємо глибину поточного блоку
+                if ((Chain.Count - block.Index) >= requiredConfirmations)
+                {
+                    foreach (var transaction in block.Transactions)
+                    {
+                        // Якщо адреса є відправником — віднімаємо суму та комісію
+                        if (transaction.From == address)
+                        {
+                            balance -= transaction.Amount + transaction.Fee;
+                        }
+                        // Якщо адреса є отримувачем — додаємо суму
+                        if (transaction.To == address)
+                        {
+                            balance += transaction.Amount;
+                        }
+                    }
+                }
+            }
+
             return balance;
         }
     }

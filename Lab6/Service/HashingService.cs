@@ -11,12 +11,12 @@ namespace Lab6.Service
     {
         public string ComputeHash(Block block)
         {
-            string transactionsData = string.Concat(block.Transactions.Select(t => t.ToRowString()).ToArray());
-            var input = $"{block.Index}{block.Timestamp}{transactionsData}{block.PreviousHash}{block.Nonce}";
+            block.MerkleRoot = CalculateMerkleRoot(block.Transactions);
+            var input = $"{block.Index}{block.Timestamp}{block.MerkleRoot}{block.PreviousHash}{block.Nonce}";
             return ComputeSha256(input);
         }
 
-        private string ComputeSha256(string input)
+        public string ComputeSha256(string input)
             {
                 using (var sha256 = System.Security.Cryptography.SHA256.Create())
                 {
@@ -24,6 +24,30 @@ namespace Lab6.Service
                     var hashBytes = sha256.ComputeHash(bytes);
                     return Convert.ToHexString(hashBytes).ToLower();
                 }
+        }
+
+        public string CalculateMerkleRoot(List<Transaction> transactions)
+        {
+            if (transactions == null || transactions.Count == 0)
+                return string.Empty;
+
+            List<string> hashes = transactions.Select(t => ComputeSha256(t.ToRowString())).ToList();
+            while (hashes.Count > 1)
+            {
+                if (hashes.Count % 2 != 0)
+                    hashes.Add(hashes.Last()); 
+
+                List<string> newHashes = new List<string>();
+                for (int i = 0; i < hashes.Count; i += 2)
+                {
+                    string combinedHash = ComputeSha256(hashes[i] + hashes[i + 1]);
+                    newHashes.Add(combinedHash);
+                }
+
+                hashes = newHashes;
+            }
+
+            return hashes[0];
         }
     }
 }

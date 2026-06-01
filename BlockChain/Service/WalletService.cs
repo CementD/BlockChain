@@ -5,7 +5,7 @@ namespace BlockChain.Service
 {
     public class WalletService
     {
-        public Wallet CreateWallet(string name)
+        private Wallet CreateWallet(string name)
         {
             using var ecdsa = ECDsa.Create();
 
@@ -28,6 +28,23 @@ namespace BlockChain.Service
             }
             Console.WriteLine($"Generated wallet with address {address} after {attempts} attempts.");
             return new Wallet(name, address, publicKey, privateKey);
+        }
+
+        public Wallet GetOrCreateWallet(string name)
+        {
+            string walletFilePath = $"{name}_wallet.json";
+            if (File.Exists(walletFilePath))
+            {
+                var json = File.ReadAllText(walletFilePath);
+                return System.Text.Json.JsonSerializer.Deserialize<Wallet>(json);
+            }
+            else
+            {
+                var wallet = CreateWallet(name);
+                var json = System.Text.Json.JsonSerializer.Serialize(wallet);
+                File.WriteAllText(walletFilePath, json);
+                return wallet;
+            }
         }
 
         public bool VerifySignature(byte[] data, byte[] signature, byte[] publicKey)

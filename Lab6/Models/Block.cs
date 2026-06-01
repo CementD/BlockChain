@@ -16,6 +16,8 @@ namespace Lab6.Models
         public long Nonce { get; set; }
         public int Difficulty { get; set; }
 
+        public string MerkleRoot { get; set; }
+
         public Block(int index, List<Transaction> transactions, string previousHash)
         {
             Index = index;

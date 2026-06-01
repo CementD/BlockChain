@@ -10,77 +10,43 @@ namespace BlockChain
         static void Main(string[] args)
         {
             var blockChain = new BlockChainService();
-            var displayService = new BlockChainDisplayService();
             var transactionService = new TransactionService();
+            var displayService = new BlockChainDisplayService();
 
-            //var AliceWallet = new WalletService().CreateWallet("Alice");
-            //var BobWallet = new WalletService().CreateWallet("Bob");
-            //var CharlieWallet = new WalletService().CreateWallet("Charlie");
+            var AliceWallet = new WalletService().GetOrCreateWallet("Alice");
+            var BobWallet = new WalletService().GetOrCreateWallet("Bob");
 
-            //while (true)
-            //{
+            displayService.PrintTransactions(blockChain.PendingTransactions);
 
-            //    Console.WriteLine("Blockchain Menu:");
-            //    Console.WriteLine("1. Add Transaction");
-            //    Console.WriteLine("2. Mine Pending Block");
-            //    Console.WriteLine("3. Display Blockchain");
-            //    Console.WriteLine("4. Show Alice Balance");
-            //    Console.WriteLine("5. Show Bob Balance");
-            //    Console.WriteLine("6. Exit");
-            //    Console.WriteLine("Enter your choice:");
+            Console.WriteLine($"Початковий звичайний баланс Боба: {blockChain.GetBalance(BobWallet.Address)}");
+            Console.WriteLine($"Початковий безпечний баланс Alice: {blockChain.GetBalance(AliceWallet.Address)}");
 
-            //    var choice = Console.ReadLine();
-            //    switch (choice)
-            //    {
-            //        case "1":
-            //            try
-            //            {
-            //                blockChain.AddTransaction(transactionService.CreateTransaction(AliceWallet, BobWallet.Address, 10, 8));
-            //            }
-            //            catch (Exception ex)
-            //            {
-            //                Console.WriteLine($"Error adding transaction: {ex.Message}");
-            //            }
-            //            break;
-            //        case "2":
-            //            blockChain.MinePendingTransactions(AliceWallet.Address);
-            //            break;
-            //        case "3":
-            //            displayService.PrintChain(blockChain.Chain);
-            //            displayService.PrintChainValidity(blockChain.IsChainValid());
-            //            break;
-            //        case "4":
-            //            var aliceBalance = blockChain.GetPendingBalance(AliceWallet.Address);
-            //            Console.WriteLine($"Alice's Balance: {aliceBalance}");
-            //            break;
-            //        case "5":
-            //            var bobBalance = blockChain.GetPendingBalance(BobWallet.Address);
-            //            Console.WriteLine($"Bob's Balance: {bobBalance}");
-            //            break;
-            //        case "6":
-            //            return;
-            //        default:
-            //            Console.WriteLine("Invalid choice. Please try again.");
-            //            break;
-            //    }
-            //}
-            var tx1 = new Transaction("Alice", "Bob", 10, 2);
-            var tx2 = new Transaction("Bob", "Charlie", 5, 1);
-            var tx3 = new Transaction("Charlie", "David", 20, 1);
-            var tx4 = new Transaction("David", "Elena", 15, 1);
+            Console.WriteLine("\n--> Alice sends 10 coins to Bob (Fee: 2)");
+            var tx = transactionService.CreateTransaction(AliceWallet, BobWallet.Address, 10, 2);
+            blockChain.AddTransaction(tx);
 
-            var txList = new List<Transaction> { tx1, tx2, tx3, tx4 };
+            // 1-й майнінг (Транзакція сідає в Блок №1)
+            blockChain.MinePendingTransactions(AliceWallet.Address);
+            Console.WriteLine("\n[1st mining / confirmation]");
+            PrintStatus(blockChain, AliceWallet.Address, BobWallet.Address);
 
-            var block = new Block(1, txList, "000abc123");
+            // 2-й майнінг (Створюється Блок №2)
+            blockChain.MinePendingTransactions(AliceWallet.Address);
+            Console.WriteLine("\n[2nd mining / confirmation]");
+            PrintStatus(blockChain, AliceWallet.Address, BobWallet.Address);
 
-            var auditor = new MerkleTreeAuditor();
-
-            var fullTree = auditor.BuildFullTree(block.Transactions);
-            auditor.PrintTreeStructure(fullTree);
-
-            auditor.DetectTampering(block, tx3);
+            // 3-й майнінг (Створюється Блок №3)
+            blockChain.MinePendingTransactions(AliceWallet.Address);
+            Console.WriteLine("\n[3rd mining / confirmation]");
+            PrintStatus(blockChain, AliceWallet.Address, BobWallet.Address);
         }
 
-        
+        static void PrintStatus(BlockChainService bc, string alice, string bob)
+        {
+            // Явно передаємо 3 підтвердження у GetSafeBalance
+            Console.WriteLine($"Alice Balance: {bc.GetBalance(alice)}, Safe balance: {bc.GetSafeBalance(alice, 3)}");
+            Console.WriteLine($"Bob Balance: {bc.GetBalance(bob)}, Safe balance: {bc.GetSafeBalance(bob, 3)}");
+        }
+
     }
 }

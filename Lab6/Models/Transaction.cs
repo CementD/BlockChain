@@ -13,20 +13,26 @@ namespace Lab6.Models
         public string To { get; set; }
         public decimal Amount { get; set; }
         public DateTime TimeStamp { get; set; }
+        public decimal Fee { get; set; }
         public byte[] SenderPublicKey { get; set; }
         public byte[]? Signature { get; set; }
-        public Transaction(string from, string to, decimal amount)
+
+        public int? ReplacesTxId { get; set; } = null;
+        public int Size { get; private set; }
+        public Transaction(string from, string to, decimal amount, decimal fee)
         {
             Id = Guid.NewGuid().ToString().ToLowerInvariant().GetHashCode();
             From = from;
             To = to;
             Amount = amount;
             TimeStamp = DateTime.Now;
+            Fee = fee;
+            Size = CalculateSize();
         }
 
         public byte[] GetDataToSign()
         {
-            var data = $"{From}:{To}:{Amount}:{TimeStamp}";
+            var data = $"{From}:{To}:{Amount}:{TimeStamp}{Fee}";
             return Encoding.UTF8.GetBytes(data);
         }
 
@@ -40,6 +46,13 @@ namespace Lab6.Models
         public override string ToString()
         {
             return $"Transaction ID: {Id}, From: {From}, To: {To}, Amount: {Amount}, TimeStamp: {TimeStamp}";
+        }
+
+        private int CalculateSize()
+        {
+            return Encoding.UTF8.GetByteCount($"{From}:{To}:{Amount}:{TimeStamp}{Fee}") + 
+                   (SenderPublicKey?.Length ?? 0) + 
+                   (Signature?.Length ?? 0);
         }
     }
 }
