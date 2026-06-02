@@ -22,6 +22,8 @@ namespace BlockChain.Service
 
         public int MaxBlockSizeBytes { get; set; } = 1000;
 
+        public int CoinbaseMaturity { get; set; } = 3;
+
         private readonly HashingService _hashingService;
         private readonly MiningService _miningService;
         private readonly TransactionService _transactionService;
@@ -33,6 +35,7 @@ namespace BlockChain.Service
             CreateGenesisBlock();
             _miningService = new MiningService();
             _transactionService = new TransactionService();
+            PendingTransactions = new List<Transaction>();
             _fileService = new FileService();
 
             var loadChain = _fileService.LoadChain();
@@ -40,25 +43,11 @@ namespace BlockChain.Service
             {
                 Chain = loadChain;
             }
-
-            string memPoolFilePath = "mempool.json";
-            if (File.Exists(memPoolFilePath))
-            {
-                var json = File.ReadAllText(memPoolFilePath);
-                var pendingTransactions = System.Text.Json.JsonSerializer.Deserialize<List<Transaction>>(json);
-                if (pendingTransactions != null)
-                    PendingTransactions = pendingTransactions;
-            }
-            if (PendingTransactions == null)
-            {
-                PendingTransactions = new List<Transaction>();
-            }
         }
 
         private void CreateGenesisBlock()
         {
             var genesisBlock = new Block(0, new List<Transaction>(), "0");
-            genesisBlock.Timestamp = new DateTime(2024, 1, 1);
             genesisBlock.Hash = _hashingService.ComputeHash(genesisBlock);
             Chain.Add(genesisBlock);
         }
@@ -117,7 +106,7 @@ namespace BlockChain.Service
         //    }
         //}
 
-        public Block MinePendingTransactions(string minerAddress)
+        public void MinePendingTransactions(string minerAddress)
         {
             var previousBlock = Chain.Last();
             var transactions = PendingTransactions.OrderByDescending(x => x.Fee).Take(MaxTransactionsPerBlock).ToList();
@@ -136,13 +125,10 @@ namespace BlockChain.Service
                 PendingTransactions.Remove(tx);
             }
 
-            SaveMemPool();
-
             if (newBlock.Index % _adjustmentInterval == 0)
             {
                 AdjustDifficulty();
             }
-            return newBlock;
         }
 
         private void AdjustDifficulty()
@@ -226,10 +212,9 @@ namespace BlockChain.Service
                 }
             }
             PendingTransactions.Add(transaction);
-            SaveMemPool();
         }
 
-        public decimal GetBalance(string address)
+        private decimal GetBalance(string address)
         {
             decimal balance = 0;
             foreach (var block in Chain)
@@ -242,7 +227,18 @@ namespace BlockChain.Service
                     }
                     if (transaction.To == address)
                     {
-                        balance += transaction.Amount;
+                        if (transaction.From == "COINBASE")
+                        {
+                            int confirmations = Chain.Count - block.Index;
+                            if (confirmations >= CoinbaseMaturity)
+                            {
+                                balance += transaction.Amount;
+                            }
+                        }
+                        else
+                        {
+                            balance += transaction.Amount;
+                        }
                     }
                 }
             }
@@ -264,91 +260,6 @@ namespace BlockChain.Service
                 }
             }
             return balance;
-        }
-
-        private void SaveMemPool()
-        {
-            string memPoolFilePath = "mempool.json";
-            var json = System.Text.Json.JsonSerializer.Serialize(PendingTransactions);
-            System.IO.File.WriteAllText(memPoolFilePath, json);
-        }
-
-        public int GetTransactionConfirmations(int transactionId)
-        {
-            int confirmations = 0;
-            foreach (var block in Chain)
-            {
-                if (block.Transactions.Any(t => t.Id == transactionId))
-                {
-                    confirmations = Chain.Count - block.Index;
-                    break;
-                }
-            }
-            return confirmations;
-        }
-
-        public decimal GetSafeBalance(string address, int requiredConfirmations = 3)
-        {
-            decimal balance = 0;
-
-            foreach (var block in Chain)
-            {
-                if ((Chain.Count - block.Index) >= requiredConfirmations)
-                {
-                    foreach (var transaction in block.Transactions)
-                    {
-                        if (transaction.From == address)
-                        {
-                            balance -= transaction.Amount + transaction.Fee;
-                        }
-                        if (transaction.To == address)
-                        {
-                            balance += transaction.Amount;
-                        }
-                    }
-                }
-            }
-
-            return balance;
-        }
-
-        public bool TryAddBlockFromPeer(Block block)
-        {
-            var lastBlock = Chain.Last();
-
-            if (block.PreviousHash != lastBlock.Hash)
-            {
-                return false;
-            }
-
-            if (block.Hash != _hashingService.ComputeHash(block))
-            {
-                return false;
-            }
-
-            if (!block.Hash.StartsWith(new string('0', block.Difficulty)))
-            {
-                return false;
-            }
-
-            foreach (var transaction in block.Transactions)
-            {
-                if (!_transactionService.ValidateTransaction(transaction).isValid)
-                {
-                    return false;
-                }
-            }
-
-            Chain.Add(block);
-
-            foreach (var transaction in block.Transactions)
-            {
-                PendingTransactions.Remove(transaction);
-            }
-
-            _fileService.SaveChainToFile(Chain);
-
-            return true;
         }
     }
 }
