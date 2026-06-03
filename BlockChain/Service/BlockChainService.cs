@@ -25,15 +25,15 @@ namespace BlockChain.Service
         private readonly HashingService _hashingService;
         private readonly MiningService _miningService;
         private readonly TransactionService _transactionService;
-        private readonly FileService _fileService = new FileService();
-        public BlockChainService()
+        private readonly FileService _fileService;
+        public BlockChainService(FileService fileService)
         {
             Chain = new List<Block>();
             _hashingService = new HashingService();
             CreateGenesisBlock();
             _miningService = new MiningService();
             _transactionService = new TransactionService();
-            _fileService = new FileService();
+            _fileService = fileService;
 
             var loadChain = _fileService.LoadChain();
             if (loadChain.Any())
@@ -177,6 +177,48 @@ namespace BlockChain.Service
                     return false;
                 if (!currentBlock.Hash.StartsWith(new string('0', currentBlock.Difficulty)))
                     return false;
+
+                var transactionsSeenIds = new List<int>();
+                foreach (var transaction in currentBlock.Transactions)
+                {
+                    if (transaction.From != "COINBASE")
+                    {
+                        if (transactionsSeenIds.Contains(transaction.Id))
+                        {
+                            return false; 
+                        }
+                        transactionsSeenIds.Add(transaction.Id);
+                    }
+                }
+            }
+            return true;
+        }
+
+        public bool IsChainValid(List<Block> chain)
+        {
+            for (int i = 1; i < chain.Count; i++)
+            {
+                var currentBlock = chain[i];
+                var previousBlock = chain[i - 1];
+                if (currentBlock.Hash != _hashingService.ComputeHash(currentBlock))
+                    return false;
+                if (previousBlock != null && currentBlock.PreviousHash != previousBlock.Hash)
+                    return false;
+                if (!currentBlock.Hash.StartsWith(new string('0', currentBlock.Difficulty)))
+                    return false;
+
+                var transactionsSeenIds = new List<int>();
+                foreach (var transaction in currentBlock.Transactions)
+                {
+                    if (transaction.From != "COINBASE")
+                    {
+                        if (transactionsSeenIds.Contains(transaction.Id))
+                        {
+                            return false;
+                        }
+                        transactionsSeenIds.Add(transaction.Id);
+                    }
+                }
             }
             return true;
         }
@@ -215,6 +257,14 @@ namespace BlockChain.Service
 
             if (transaction.From != "COINBASE")
             {
+                if (PendingTransactions.Any(tx => tx.Id == transaction.Id))
+                {
+                    throw new InvalidOperationException($"Transaction with ID {transaction.Id} is already in the mempool.");
+                }
+                if (Chain.Any(b => b.Transactions.Any(t => t.Id == transaction.Id)))
+                {
+                    throw new InvalidOperationException($"Transaction with ID {transaction.Id} is already confirmed in the blockchain.");
+                }
                 decimal senderBalance = GetPendingBalance(transaction.From);
                 if (senderBalance < transaction.Amount + transaction.Fee)
                 {
@@ -350,5 +400,42 @@ namespace BlockChain.Service
 
             return true;
         }
+
+        public bool ResolveConflicts(List<Block> peerChain)
+        {
+            if (peerChain.Count > Chain.Count && IsChainValid(peerChain) && peerChain.Sum(b => b.Difficulty) > Chain.Sum(b => b.Difficulty))
+            {
+                int forkPoint = 0;
+                for (int i = 0; i < Chain.Count; i++)
+                {
+                    if (Chain[i].Hash != peerChain[i].Hash)
+                    {
+                        forkPoint = i - 1;
+                        break;
+                    }
+                }
+
+                var chainTransactions = new List<Transaction>();
+                for (int i = forkPoint + 1; i < Chain.Count; i++)
+                {
+                    chainTransactions.AddRange(Chain[i].Transactions);
+                }
+
+                var peerTransactionIds = peerChain.Skip(forkPoint + 1).SelectMany(b => b.Transactions.Select(t => t.Id)).ToList();
+                var savedTransactions = chainTransactions.Where(tx => tx.From != "COINBASE" && !peerTransactionIds.Contains(tx.Id)).ToList();
+
+                foreach (var tx in savedTransactions)
+                {
+                    PendingTransactions.Add(tx);
+                }
+
+                Chain = peerChain;
+                _fileService.SaveChainToFile(Chain);
+                SaveMemPool();
+                return true;
+            }
+            return false;
+        }
     }
 }
+

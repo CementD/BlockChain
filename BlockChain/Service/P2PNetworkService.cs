@@ -3,6 +3,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text;
@@ -49,11 +50,15 @@ namespace BlockChain.Service
 
         private async Task HandlePeerAsync(TcpClient client)
         {
-            string peerIp = client.Client.RemoteEndPoint.ToString();
-            
+            string peerIp = "Unknown";
+            if (client.Client.RemoteEndPoint is System.Net.IPEndPoint remoteEndPoint)
+            {
+                peerIp = remoteEndPoint.Address.ToString();
+            }
+
             if (_peerStrikes.TryGetValue(peerIp, out int strikes) && strikes >= MaxStrikes)
             {
-                Debug.WriteLine($"Peer {peerIp} is banned due to too many strikes.");
+                Console.WriteLine($"[Firewall] Connection blocked from malicious peer: {peerIp}");
                 client.Close();
                 return;
             }
@@ -65,27 +70,87 @@ namespace BlockChain.Service
 
                 var json = await reader.ReadLineAsync();
 
-                if (json == null) return;
+                if (string.IsNullOrEmpty(json))
+                {
+                    int currentStrikes = _peerStrikes.AddOrUpdate(peerIp, 1, (key, oldValue) => oldValue + 1);
+                    Console.WriteLine($"[Firewall WARNING] Received empty packet from {peerIp}. Strike: {currentStrikes}/{MaxStrikes}");
+                    return;
+                }
 
-                var message = JsonSerializer.Deserialize<P2PMessage>(json);
+                P2PMessage message = null;
+                try
+                {
+                    message = JsonSerializer.Deserialize<P2PMessage>(json);
+                    if (message == null)
+                        throw new JsonException();
+                }
+                catch (JsonException)
+                {
+                    int currentStrikes = _peerStrikes.AddOrUpdate(peerIp, 1, (key, oldValue) => oldValue + 1);
+                    Console.WriteLine($"[Firewall WARNING] Invalid JSON format from {peerIp}. Strike: {currentStrikes}/{MaxStrikes}");
+                    return;
+                }
 
-                 await CommentExecutor(message);
+                await CommentExecutor(message, peerIp);
             }
             catch (Exception ex)
             {
-                throw;
+                Debug.WriteLine($"Error handling peer {peerIp}: {ex.Message}");
+            }
+            finally
+            {
+                client.Close();
             }
         }
 
-        private async Task CommentExecutor(P2PMessage message)
+        private async Task CommentExecutor(P2PMessage message, string peerIp)
         {
             if (message.Type == "NEW_BLOCK")
             {
-                var block = JsonSerializer.Deserialize<Block>(message.Data);
-                if (block != null)
+                try
                 {
-                    _blockChainService.TryAddBlockFromPeer(block);
-                    Debug.WriteLine($"Received new block from peer: {block.Index}");
+                    var block = JsonSerializer.Deserialize<Block>(message.Data);
+                    if (block != null)
+                    {
+                        bool isBlockValid = _blockChainService.TryAddBlockFromPeer(block);
+                        if (!isBlockValid)
+                        {
+                            int currentStrikes = _peerStrikes.AddOrUpdate(peerIp, 2, (key, oldValue) => oldValue + 2);
+                            Console.WriteLine($"[Firewall WARNING] Cryptographic attack detected! Invalid block from {peerIp}. Strike: {currentStrikes}/{MaxStrikes}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[P2P] Successfully accepted and added new block #{block.Index} from {peerIp}");
+                        }
+                    }
+                }
+                catch (JsonException)
+                {
+                    int currentStrikes = _peerStrikes.AddOrUpdate(peerIp, 1, (key, oldValue) => oldValue + 1);
+                    Console.WriteLine($"[Firewall WARNING] Corrupted block data from {peerIp}. Strike: {currentStrikes}/{MaxStrikes}");
+                }
+            }
+            if (message.Type == "REQUEST_CHAIN")
+            {
+                var chain = _blockChainService.Chain;
+                var responseMessage = new P2PMessage("CHAIN_RESPONSE", JsonSerializer.Serialize(chain));
+                var json = JsonSerializer.Serialize(responseMessage);
+                foreach (var peer in _peers)
+                {
+                    await SendMessageAsync(peer, json);
+                }
+            }
+
+            if (message.Type == "CHAIN_RESPONSE")
+            {
+                var chain = JsonSerializer.Deserialize<List<Block>>(message.Data);
+                if (chain != null)
+                {
+                    var res = _blockChainService.ResolveConflicts(chain);
+                    if (res)
+                    {
+                        Debug.WriteLine("Chain replaced with received chain");
+                    }
                 }
             }
         }
@@ -93,11 +158,15 @@ namespace BlockChain.Service
         public async Task BroadcastBlockAsync(Block block)
         {
             var message = new P2PMessage("NEW_BLOCK", JsonSerializer.Serialize(block));
-            var json = JsonSerializer.Serialize(message);
+            await BroadCastMessageAsync(message);
+        }
 
+        public async Task BroadCastMessageAsync(P2PMessage p2PMessage)
+        {
+            var json = JsonSerializer.Serialize(p2PMessage);
             foreach (var peer in _peers)
             {
-                SendMessageAsync(peer, json);
+                await SendMessageAsync(peer, json);
             }
         }
 
@@ -114,6 +183,11 @@ namespace BlockChain.Service
             {
                 Debug.WriteLine($"Failed to send message to {peer.Host}:{peer.Port} - {ex.Message}");
             }
+        }
+
+        public ConcurrentDictionary<string, int> GetBlacklist()
+        {
+            return _peerStrikes;
         }
     }
 }

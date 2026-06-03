@@ -12,6 +12,10 @@ namespace BlockChain.Service
     public class FileService
     {
         private readonly string chainFilePath = "blockchain_data.json";
+        public FileService(int port)
+        {
+            chainFilePath = $"blockchain_data_{port}.json";
+        }
 
         public void SaveChainToFile(List<Block> chain)
         {
