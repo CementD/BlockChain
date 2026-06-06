@@ -123,7 +123,7 @@ namespace BlockChain.Service
         {
             var previousBlock = Chain.Last();
             var transactions = PendingTransactions.OrderByDescending(x => x.Fee).Take(MaxTransactionsPerBlock).ToList();
-            var rewardTransaction = new Transaction("COINBASE", minerAddress, MiningReward + transactions.Sum(t => t.Fee), 0);
+            var rewardTransaction = new Transaction("COINBASE", minerAddress, MiningReward + transactions.Sum(t => t.Fee), 0, "MAIN");
             transactions.Add(rewardTransaction);
 
             var newBlock = new Block(previousBlock.Index + 1, transactions, previousBlock.Hash);
@@ -275,63 +275,113 @@ namespace BlockChain.Service
                 throw new ArgumentException($"Invalid transaction from {transaction.From} to {transaction.To} for amount {transaction.Amount}");
             }
 
+            if (transaction.TokenSymbol == "NFT" || transaction.From == "MINT_NFT" || !string.IsNullOrEmpty(transaction.NftDataUrl))
+            {
+                if (transaction.Amount != 1)
+                {
+                    throw new Exception("NFT Validation Error: Amount for NFT transaction must be exactly 1!");
+                }
+            }
 
-            if (transaction.From != "COINBASE")
+            if (transaction.From != "COINBASE" && transaction.From != "MINT" && transaction.From != "MINT_NFT")
             {
                 if (PendingTransactions.Any(tx => tx.Id == transaction.Id))
                 {
                     throw new InvalidOperationException($"Transaction with ID {transaction.Id} is already in the mempool.");
                 }
+
                 if (Chain.Any(b => b.Transactions.Any(t => t.Id == transaction.Id)))
                 {
                     throw new InvalidOperationException($"Transaction with ID {transaction.Id} is already confirmed in the blockchain.");
                 }
-                decimal senderBalance = GetPendingBalance(transaction.From);
-                if (senderBalance < transaction.Amount + transaction.Fee)
+
+                decimal senderTokenBalance = GetPendingBalance(transaction.From, transaction.TokenSymbol);
+                decimal requiredTokenAmount = transaction.Amount;
+                if (transaction.TokenSymbol == "MAIN")
                 {
-                    throw new InvalidOperationException($"Insufficient balance for address {transaction.From}. Available: {senderBalance}, Required: {transaction.Amount}");
+                    requiredTokenAmount += transaction.Fee;
                 }
+
+                if (senderTokenBalance < requiredTokenAmount)
+                {
+                    throw new InvalidOperationException($"Insufficient balance for token {transaction.TokenSymbol} at address {transaction.From}. Available: {senderTokenBalance}, Required: {requiredTokenAmount}");
+                }
+
+                if (transaction.TokenSymbol != "MAIN")
+                {
+                    decimal senderMainBalance = GetPendingBalance(transaction.From, "MAIN");
+                    if (senderMainBalance < transaction.Fee)
+                    {
+                        throw new InvalidOperationException($"Insufficient MAIN balance for gas (fee) at address {transaction.From}. Available MAIN: {senderMainBalance}, Required Fee: {transaction.Fee}");
+                    }
+                }
+
                 if (transaction.Fee < MinFeePerByte * transaction.Size)
                 {
                     throw new InvalidOperationException($"Transaction fee is too low. Minimum required: {MinFeePerByte * transaction.Size}");
                 }
             }
+
             PendingTransactions.Add(transaction);
             SaveMemPool();
         }
 
-        public decimal GetBalance(string address)
+        public decimal GetBalance(string address, string tokenSymbol)
         {
             decimal balance = 0;
             foreach (var block in Chain)
             {
                 foreach (var transaction in block.Transactions)
                 {
-                    if (transaction.From == address)
-                    {
-                        balance -= transaction.Amount + transaction.Fee;
-                    }
-                    if (transaction.To == address)
+                    if (transaction.From == "MINT" && transaction.To == address && transaction.TokenSymbol == tokenSymbol)
                     {
                         balance += transaction.Amount;
+                    }
+                    else
+                    {
+                        if (transaction.From == address && transaction.TokenSymbol == tokenSymbol)
+                        {
+                            balance -= transaction.Amount + transaction.Fee;
+                        }
+                        if (transaction.To == address && transaction.TokenSymbol == tokenSymbol)
+                        {
+                            balance += transaction.Amount;
+                        }
+                    }
+
+                    if (transaction.From == address && tokenSymbol == "MAIN")
+                    {
+                        balance -= transaction.Fee;
                     }
                 }
             }
             return balance;
         }
 
-        public decimal GetPendingBalance(string address)
+        public decimal GetPendingBalance(string address, string tokenSymbol)
         {
-            decimal balance = GetBalance(address);
+            decimal balance = GetBalance(address, tokenSymbol);
             foreach (var transaction in PendingTransactions)
             {
-                if (transaction.From == address)
-                {
-                    balance -= transaction.Amount + transaction.Fee;
-                }
-                if (transaction.To == address)
+                if (transaction.From == "MINT" && transaction.To == address && transaction.TokenSymbol == tokenSymbol)
                 {
                     balance += transaction.Amount;
+                }
+                else
+                {
+                    if (transaction.From == address && transaction.TokenSymbol == tokenSymbol)
+                    {
+                        balance -= transaction.Amount + transaction.Fee;
+                    }
+                    if (transaction.To == address && transaction.TokenSymbol == tokenSymbol)
+                    {
+                        balance += transaction.Amount;
+                    }
+                }
+
+                if (transaction.From == address && tokenSymbol == "MAIN")
+                {
+                    balance -= transaction.Fee;
                 }
             }
             return balance;
@@ -473,6 +523,70 @@ namespace BlockChain.Service
                 return true;
             }
             return false;
+        }
+
+        public int MineBlockParallel(Block block, int difficulty, int startNonce, int endNonce, out string foundHash)
+        {
+            foundHash = null;
+
+            string staticData = block.Index + block.Timestamp.ToString("o") + block.MerkleRoot + block.PreviousHash;
+            byte[] staticBytes = Encoding.UTF8.GetBytes(staticData);
+
+            int resultNonce = -1;
+            string resultHash = null;
+            object locker = new();
+            int processorCount = Environment.ProcessorCount;
+
+            using var cts = new CancellationTokenSource();
+            var po = new ParallelOptions { CancellationToken = cts.Token, MaxDegreeOfParallelism = processorCount };
+
+            try
+            {
+                Parallel.For(0, processorCount, po, (i, state) =>
+                {
+                    byte[] inputBuffer = new byte[staticBytes.Length + 4];
+                    Array.Copy(staticBytes, inputBuffer, staticBytes.Length);
+                    byte[] hashBuffer = new byte[32];
+                    using var sha256 = System.Security.Cryptography.SHA256.Create();
+
+                    int localNonce = startNonce + i;
+                    while (localNonce <= endNonce && !cts.Token.IsCancellationRequested)
+                    {
+                        BitConverter.TryWriteBytes(inputBuffer.AsSpan(staticBytes.Length), localNonce);
+                        sha256.TryComputeHash(inputBuffer, hashBuffer, out _);
+
+                        bool valid = true;
+                        for (int j = 0; j < difficulty / 2; j++)
+                        {
+                            if (hashBuffer[j] != 0)
+                            {
+                                valid = false;
+                                break;
+                            }
+                        }
+
+                        if (valid)
+                        {
+                            lock (locker)
+                            {
+                                if (resultNonce == -1)
+                                {
+                                    resultNonce = localNonce;
+                                    resultHash = Convert.ToHexString(hashBuffer).ToLower();
+                                    cts.Cancel();
+                                    state.Stop();
+                                }
+                            }
+                            break;
+                        }
+                        localNonce += processorCount;
+                    }
+                });
+            }
+            catch (OperationCanceledException) { }
+
+            foundHash = resultHash;
+            return resultNonce;
         }
     }
 }

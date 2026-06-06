@@ -5,7 +5,7 @@ namespace BlockChain.Service
 {
     public class WalletService
     {
-        private Wallet CreateWallet(string name)
+        public Wallet CreateWallet(string name)
         {
             using var ecdsa = ECDsa.Create();
 

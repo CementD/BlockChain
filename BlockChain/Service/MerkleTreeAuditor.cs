@@ -95,7 +95,8 @@ namespace BlockChain.Service
                         currentTx.From,
                         currentTx.To + "_HACKED",
                         currentTx.Amount + 500.50m,
-                        currentTx.Size
+                        currentTx.Size,
+                        currentTx.TokenSymbol
                     );
                     hackedTx.Fee = currentTx.Fee;
 

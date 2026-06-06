@@ -18,7 +18,9 @@ namespace BlockChain.Models
         public byte[]? Signature { get; set; }
 
         public int Size { get; private set; }
-        public Transaction(string from, string to, decimal amount, decimal fee)
+        public string TokenSymbol { get; set; }
+        public string? NftDataUrl { get; set; }
+        public Transaction(string from, string to, decimal amount, decimal fee, string tokenSymbol, string? nftDataUrl = null)
         {
             Id = Guid.NewGuid().ToString().ToLowerInvariant().GetHashCode();
             From = from;
@@ -27,11 +29,13 @@ namespace BlockChain.Models
             TimeStamp = DateTime.Now;
             Fee = fee;
             Size = CalculateSize();
+            TokenSymbol = tokenSymbol;
+            NftDataUrl = nftDataUrl;
         }
 
         public byte[] GetDataToSign()
         {
-            var data = $"{From}:{To}:{Amount}:{TimeStamp}{Fee}";
+            var data = $"{From}:{To}:{Amount}:{TimeStamp}{Fee}{TokenSymbol}";
             return Encoding.UTF8.GetBytes(data);
         }
 

@@ -14,9 +14,9 @@ namespace BlockChain.Service
         {
             _walletService = new WalletService();
         }
-        public Transaction CreateTransaction(Wallet sender, string to, decimal amount, decimal fee)
+        public Transaction CreateTransaction(Wallet sender, string to, decimal amount, decimal fee, string tokenSymbol = "MAIN")
         {
-            var tx =  new Transaction(sender.Address, to, amount, fee);
+            var tx =  new Transaction(sender.Address, to, amount, fee, tokenSymbol);
             tx.SenderPublicKey = sender.PublicKey;
             tx.Signature = sender.Sign(tx.GetDataToSign());
             if (ValidateTransaction(tx).isValid) {

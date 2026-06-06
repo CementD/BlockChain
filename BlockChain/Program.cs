@@ -1,133 +1,319 @@
 ﻿using BlockChain.Service;
 using BlockChain.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
-Console.WriteLine("Введіть порт для P2P мережі для власного вузла:");
-int myport = int.Parse(Console.ReadLine());
-Console.WriteLine("Введіть порт для сусіднього вузла:");
-int nodeport = int.Parse(Console.ReadLine());
-
-var blockChain = new BlockChainService(new FileService(myport));
-var displayService = new BlockChainDisplayService();
-var transactionService = new TransactionService();
-var p2pNetworkService = new P2PNetworkService(myport, blockChain, new List<PeerInfo> { new PeerInfo("localhost", nodeport) });
-var merkleTreeAuditor = new MerkleTreeAuditor();
-
-var AliceWallet = new WalletService().GetOrCreateWallet("Alice");
-var BobWallet = new WalletService().GetOrCreateWallet("Bob");
-
-var tx2 = transactionService.CreateTransaction(AliceWallet, BobWallet.Address, 3, 0.05m);
-
-while (true)
+class Program
 {
-    Console.WriteLine("BlockChain Menu:");
-    Console.WriteLine("0. Connect");
-    Console.WriteLine("1. Add Transaction");
-    Console.WriteLine("2. Mine Pending Transactions");
-    Console.WriteLine("3. Display BlockChain");
-    Console.WriteLine("4. Show Alice's Balance");
-    Console.WriteLine("5. Show Bob's Balance");
-    Console.WriteLine("6. Show Transaction Confirmations");
-    Console.WriteLine("7. Show Firewall Blacklist");
-    Console.WriteLine("8. Exit");
-    Console.WriteLine("9. Create tx1 (for 5001)");
-    Console.WriteLine("10. Create tx2 (for 5002)");
-    Console.WriteLine("11. Add tx2 to pending transaction");
-    Console.WriteLine("12. Show Pending txs");
-    Console.WriteLine("13. Send Garbage (Strike 1)");
-    Console.WriteLine("14. Send Fake Block (Strike 2)");
-    Console.WriteLine("15. Merkle Proof");
-    Console.Write("Choose an option: ");
+    private static BlockChainService blockChain;
+    private static BlockchainExplorerService explorerService;
+    private static WalletKeystoreService keystore = new WalletKeystoreService();
+    private static TransactionService transactionService = new TransactionService();
+    private static BlockChainDisplayService displayService = new BlockChainDisplayService();
+    private static P2PNetworkService p2pNetworkService;
+    private static WalletService walletService = new WalletService();
 
-    var choice = Console.ReadLine();
-    switch (choice)
+    private static Wallet currentWallet = null;
+
+    static async Task Main(string[] args)
     {
-        case "0":
-            p2pNetworkService.Start();
-            Console.WriteLine("P2P Network Service started.");
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-            var getChainMesage = new P2PMessage("REQUEST_CHAIN", "");
-            await p2pNetworkService.BroadCastMessageAsync(getChainMesage);
-            break;
-        case "1":
-            Console.WriteLine("Enter Fee:");
-            var feeInput = Console.ReadLine();
-            blockChain.AddTransaction(transactionService.CreateTransaction(AliceWallet, BobWallet.Address, 10, decimal.Parse(feeInput)));
-            break;
-        case "2":
-            var block = blockChain.MinePendingTransactions(AliceWallet.Address);
-            await p2pNetworkService.BroadcastBlockAsync(block);
-            break;
-        case "3":
-            displayService.PrintChain(blockChain.Chain);
-            displayService.PrintChainValidity(blockChain.IsChainValid());
-            break;
-        case "4":
-            Console.WriteLine($"Alice's Balance: {blockChain.GetPendingBalance(AliceWallet.Address)}");
-            break;
-        case "5":
-            Console.WriteLine($"Bob's Balance: {blockChain.GetPendingBalance(BobWallet.Address)}");
-            break;
-        case "6":
-            Console.WriteLine("Enter Transaction ID:");
-            var transactionId = int.Parse(Console.ReadLine());
-            Console.WriteLine($"Transaction Confirmations: {blockChain.GetTransactionConfirmations(transactionId)}");
-            break;
-        case "7":
-            var blacklist = p2pNetworkService.GetBlacklist();
+        Console.WriteLine("Enter the P2P network port for your own node:");
+        int myport = int.Parse(Console.ReadLine());
+        Console.WriteLine("Enter the P2P network port for the neighbor node:");
+        int nodeport = int.Parse(Console.ReadLine());
 
-            if (blacklist.IsEmpty)
+        blockChain = new BlockChainService(new FileService(myport));
+        explorerService = new BlockchainExplorerService(blockChain);
+        p2pNetworkService = new P2PNetworkService(myport, blockChain, new List<PeerInfo> { new PeerInfo("localhost", nodeport) });
+
+        StartWalletMenu();
+
+        while (true)
+        {
+            Console.WriteLine($"\nBlockChain Menu (Current Wallet: {currentWallet.Name})");
+            Console.WriteLine("0. Connect to P2P Network");
+            Console.WriteLine("1. Add Transaction");
+            Console.WriteLine("2. Mine Pending Transactions");
+            Console.WriteLine("3. Display BlockChain");
+            Console.WriteLine("4. Show all balances");
+            Console.WriteLine("5. Wallet History");
+            Console.WriteLine("6. Find block by transaction id");
+            Console.WriteLine("7. Make your own token (Mint)");
+            Console.WriteLine("8. Mint New NFT (MINT_NFT)");
+            Console.WriteLine("9. View My NFTs");
+            Console.WriteLine("e. Exit");
+            Console.Write("Choose an option: ");
+
+            var choice = Console.ReadLine().ToLower();
+            switch (choice)
             {
-                Console.WriteLine("Peer strikes list is empty.");
+                case "0":
+                    p2pNetworkService.Start();
+                    Console.WriteLine("P2P Network Service started.");
+                    var getChainMessage = new P2PMessage("REQUEST_CHAIN", "");
+                    await p2pNetworkService.BroadCastMessageAsync(getChainMessage);
+                    break;
+
+                case "1":
+                    Console.Write("Enter Recipient Address: ");
+                    string toAddress = Console.ReadLine();
+                    Console.Write("Enter Token Symbol: ");
+                    string tokenSymbol = Console.ReadLine().ToUpper();
+                    Console.Write("Enter Amount: ");
+                    decimal amount = decimal.Parse(Console.ReadLine());
+                    Console.Write("Enter Fee (in MAIN coins): ");
+                    decimal fee = decimal.Parse(Console.ReadLine());
+
+                    try
+                    {
+                        var tx = transactionService.CreateTransaction(currentWallet, toAddress, amount, fee, tokenSymbol);
+                        blockChain.AddTransaction(tx);
+                        Console.WriteLine("Transaction added to memory pool successfully.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error adding transaction: {ex.Message}");
+                    }
+                    break;
+
+                case "2":
+                    var block = blockChain.MinePendingTransactions(currentWallet.Address);
+                    await p2pNetworkService.BroadcastBlockAsync(block);
+                    Console.WriteLine("Block mined and broadcasted successfully.");
+                    break;
+
+                case "3":
+                    displayService.PrintChain(blockChain.Chain);
+                    displayService.PrintChainValidity(blockChain.IsChainValid());
+                    break;
+
+                case "4":
+                    ShowAllBalances();
+                    break;
+
+                case "5":
+                    ShowWalletHistory();
+                    break;
+
+                case "6":
+                    FindBlockByTxId();
+                    break;
+
+                case "7":
+                    MintNewToken();
+                    break;
+
+                case "8":
+                    MintNewNft();
+                    break;
+                case "9":
+                    ViewMyNfts();
+                    break;
+                case "e":
+                    Console.WriteLine("Exiting program...");
+                    return;
+
+                default:
+                    Console.WriteLine("Invalid option. Please try again.");
+                    break;
             }
-            else
-            {
-                Console.WriteLine($"{"IP-Address",-20} | {"Peer strikes",-15} | {"Status",-15}");
-                Console.WriteLine(new string('-', 55));
+        }
+    }
 
-                foreach (var strike in blacklist)
+    private static void StartWalletMenu()
+    {
+        while (currentWallet == null)
+        {
+            Console.WriteLine("WALLET MANAGEMENT");
+            Console.WriteLine("1. Create a new wallet");
+            Console.WriteLine("2. Load an existing wallet");
+            Console.Write("Your choice: ");
+            string choice = Console.ReadLine();
+
+            if (choice == "1")
+            {
+                Console.Write("Enter a name for the new wallet: ");
+                string name = Console.ReadLine();
+                Console.Write("Create a password: ");
+                string password = Console.ReadLine();
+
+                currentWallet = walletService.CreateWallet(name);
+
+                keystore.SaveWallet(currentWallet, password);
+
+                Console.WriteLine($"Wallet '{name}' with address [{currentWallet.Address}] successfully created!");
+            }
+            else if (choice == "2")
+            {
+                Console.Write("Enter the wallet name to load: ");
+                string name = Console.ReadLine();
+                Console.Write("Enter the password: ");
+                string password = Console.ReadLine();
+
+                try
                 {
-                    string status = strike.Value >= 3 ? "Banned" : "";
-                    Console.WriteLine($"{strike.Key,-20} | {strike.Value + " / 3",-15} | {status,-15}");
+                    currentWallet = keystore.LoadWallet(name, password);
+                    Console.WriteLine($"Wallet '{name}' successfully loaded! Address: {currentWallet.Address}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Load error: {ex.Message}");
                 }
             }
-            break;
-        case "8":
+        }
+    }
+
+    private static void ShowAllBalances()
+    {
+        string myAddress = currentWallet.Address;
+        Console.WriteLine($"Balances for Address: {myAddress}");
+
+        var allTokens = new HashSet<string> { "MAIN" };
+        foreach (var b in blockChain.Chain)
+        {
+            foreach (var t in b.Transactions)
+            {
+                if (!string.IsNullOrEmpty(t.TokenSymbol)) allTokens.Add(t.TokenSymbol);
+            }
+        }
+        foreach (var t in blockChain.PendingTransactions)
+        {
+            if (!string.IsNullOrEmpty(t.TokenSymbol)) allTokens.Add(t.TokenSymbol);
+        }
+
+        foreach (var token in allTokens)
+        {
+            decimal confirmed = blockChain.GetBalance(myAddress, token);
+            decimal pending = blockChain.GetPendingBalance(myAddress, token);
+            Console.WriteLine($"{token}: {confirmed} (Pending in Mempool: {pending})");
+        }
+
+        decimal feesEarned = explorerService.GetTotalFeesEarned(myAddress);
+        Console.WriteLine($"Total Miner Fees Earned: {feesEarned} MAIN");
+    }
+
+    private static void ShowWalletHistory()
+    {
+        string myAddress = currentWallet.Address;
+        var history = explorerService.GetTransactionHistory(myAddress);
+
+        Console.WriteLine($"\nTransaction History for Wallet: {currentWallet.Name}");
+        if (!history.Any())
+        {
+            Console.WriteLine("No transactions found.");
             return;
-        case "9":
-            var tx1 = transactionService.CreateTransaction(AliceWallet, BobWallet.Address, 5, 0.1m);
-            blockChain.AddTransaction(tx1);
-            Console.WriteLine($"Created Transaction: {tx1.Id} from Alice to Bob for 5 coins with fee 0.1");
-            break;
-        case "10":
-            blockChain.AddTransaction(tx2);
-            Console.WriteLine($"Created Transaction: {tx2.Id} from Bob to Alice for 3 coins with fee 0.05");
-            break;
-        case "11":
-            try
-            {
-                blockChain.AddTransaction(tx2);
-                Console.WriteLine($"Added Transaction: {tx2.Id} to pending transactions.");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error adding transaction: {ex.Message}");
-            }
-            break;
-        case "12":
-            displayService.PrintTransactions(blockChain.PendingTransactions);
-            break;
-        case "13":
-            var brokenMessage = new P2PMessage("INCORRECT", null);
-            await p2pNetworkService.BroadCastMessageAsync(new P2PMessage("", "") { Type = null });
-            break;
-        case "14":
-            var fakeBlock = new Block(999, new List<Transaction>(), "fake_previous_hash");
-            var fakeBlockMessage = new P2PMessage("NEW_BLOCK", System.Text.Json.JsonSerializer.Serialize(fakeBlock));
-            await p2pNetworkService.BroadCastMessageAsync(fakeBlockMessage);
-            Console.WriteLine("Sent fake block to peers.");
-            break;
-        default:
-            Console.WriteLine("Invalid option. Please try again.");
-            break;
+        }
+
+        foreach (var tx in history)
+        {
+            string direction = tx.From == myAddress ? "SENT" : "RECEIVED";
+            if (tx.From == "MINT") direction = "EMISSION (MINT)";
+            if (tx.From == "COINBASE") direction = "MINING REWARD (COINBASE)";
+
+            Console.WriteLine($"[{direction}] From: {tx.From} | To: {tx.To} | Amount: {tx.Amount} {tx.TokenSymbol} | Fee: {tx.Fee} MAIN");
+        }
+    }
+
+    private static void FindBlockByTxId()
+    {
+        Console.Write("Enter Transaction ID: ");
+        string txId = Console.ReadLine();
+
+        var block = explorerService.FindBlockByTransactionId(txId);
+        if (block != null)
+        {
+            Console.WriteLine($"Transaction found in Block #{block.Index}");
+            Console.WriteLine($"Block Hash: {block.Hash}");
+            Console.WriteLine($"Previous Hash: {block.PreviousHash}");
+        }
+        else
+        {
+            Console.WriteLine("Block containing this transaction was not found in the blockchain.");
+        }
+    }
+
+    private static void MintNewToken()
+    {
+        Console.Write("Enter the name of your new token (e.g., MY_COIN): ");
+        string tokenSymbol = Console.ReadLine().ToUpper();
+        Console.Write("Enter the token supply amount to mint: ");
+        decimal amount = decimal.Parse(Console.ReadLine());
+
+        string myAddress = currentWallet.Address;
+
+        var mintTx = new Transaction("MINT", myAddress, amount, 0, tokenSymbol);
+
+        mintTx.SenderPublicKey = currentWallet.PublicKey;
+
+        using (var ecdsa = System.Security.Cryptography.ECDsa.Create())
+        {
+            ecdsa.ImportECPrivateKey(currentWallet.PrivateKey, out _);
+            mintTx.Signature = ecdsa.SignData(mintTx.GetDataToSign(), System.Security.Cryptography.HashAlgorithmName.SHA256);
+        }
+
+        try
+        {
+            blockChain.AddTransaction(mintTx);
+            Console.WriteLine($"\nMint request for {amount} {tokenSymbol} successfully added to the mempool!");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\nMint error: {ex.Message}");
+        }
+    }
+
+    private static void MintNewNft()
+    {
+        Console.Write("Enter NFT Data URL: ");
+        string nftUrl = Console.ReadLine();
+
+        decimal amount = 1;
+        string myAddress = currentWallet.Address;
+
+        var nftTx = new Transaction("MINT_NFT", myAddress, amount, 0, "NFT", nftUrl);
+
+        nftTx.SenderPublicKey = currentWallet.PublicKey;
+
+        using (var ecdsa = System.Security.Cryptography.ECDsa.Create())
+        {
+            ecdsa.ImportECPrivateKey(currentWallet.PrivateKey, out _);
+            nftTx.Signature = ecdsa.SignData(nftTx.GetDataToSign(), System.Security.Cryptography.HashAlgorithmName.SHA256);
+        }
+
+        try
+        {
+            blockChain.AddTransaction(nftTx);
+            Console.WriteLine($"\nNFT Mint request successfully added to mempool!");
+            Console.WriteLine($"Asset Link: {nftUrl}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\nNFT Mint error: {ex.Message}");
+        }
+    }
+
+    private static void ViewMyNfts()
+    {
+        string myAddress = currentWallet.Address;
+        Console.WriteLine($"\nNFT Collection for Address: {myAddress}");
+
+        var myNfts = explorerService.GetOwnedNFTs(myAddress);
+
+        if (!myNfts.Any())
+        {
+            Console.WriteLine("You do not own any NFTs yet.");
+            return;
+        }
+
+        int counter = 1;
+        foreach (var nftUrl in myNfts)
+        {
+            Console.WriteLine($"{counter}. [NFT Token] -> {nftUrl}");
+            counter++;
+        }
     }
 }
