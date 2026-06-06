@@ -14,7 +14,7 @@ var p2pNetworkService = new P2PNetworkService(myport, blockChain, new List<PeerI
 var AliceWallet = new WalletService().GetOrCreateWallet("Alice");
 var BobWallet = new WalletService().GetOrCreateWallet("Bob");
 
-var tx2 = transactionService.CreateTransaction(BobWallet, AliceWallet.Address, 3, 0.05m);
+var tx2 = transactionService.CreateTransaction(AliceWallet, BobWallet.Address, 3, 0.05m);
 
 while (true)
 {
@@ -31,6 +31,9 @@ while (true)
     Console.WriteLine("9. Create tx1 (for 5001)");
     Console.WriteLine("10. Create tx2 (for 5002)");
     Console.WriteLine("11. Add tx2 to pending transaction");
+    Console.WriteLine("12. Show Pending txs");
+    Console.WriteLine("13. Send Garbage (Strike 1)");
+    Console.WriteLine("14. Send Fake Block (Strike 2)");
     Console.Write("Choose an option: ");
 
     var choice = Console.ReadLine();
@@ -46,10 +49,10 @@ while (true)
         case "1":
             Console.WriteLine("Enter Fee:");
             var feeInput = Console.ReadLine();
-            blockChain.AddTransaction(transactionService.CreateTransaction(BobWallet, AliceWallet.Address, 10, decimal.Parse(feeInput)));
+            blockChain.AddTransaction(transactionService.CreateTransaction(AliceWallet, BobWallet.Address, 10, decimal.Parse(feeInput)));
             break;
         case "2":
-            var block = blockChain.MinePendingTransactions(BobWallet.Address);
+            var block = blockChain.MinePendingTransactions(AliceWallet.Address);
             await p2pNetworkService.BroadcastBlockAsync(block);
             break;
         case "3":
@@ -107,6 +110,19 @@ while (true)
             {
                 Console.WriteLine($"Error adding transaction: {ex.Message}");
             }
+            break;
+        case "12":
+            displayService.PrintTransactions(blockChain.PendingTransactions);
+            break;
+        case "13":
+            var brokenMessage = new P2PMessage("INCORRECT", null);
+            await p2pNetworkService.BroadCastMessageAsync(new P2PMessage("", "") { Type = null });
+            break;
+        case "14":
+            var fakeBlock = new Block(999, new List<Transaction>(), "fake_previous_hash");
+            var fakeBlockMessage = new P2PMessage("NEW_BLOCK", System.Text.Json.JsonSerializer.Serialize(fakeBlock));
+            await p2pNetworkService.BroadCastMessageAsync(fakeBlockMessage);
+            Console.WriteLine("Sent fake block to peers.");
             break;
         default:
             Console.WriteLine("Invalid option. Please try again.");

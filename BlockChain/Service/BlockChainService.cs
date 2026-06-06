@@ -18,7 +18,7 @@ namespace BlockChain.Service
         public decimal MiningReward { get; set; } = 50;
         public int MaxTransactionsPerBlock { get; set; } = 5;
 
-        public decimal MinFeePerByte { get; set; } = 0.0005m;
+        public decimal MinFeePerByte { get; set; } = 0.00005m;
 
         public int MaxBlockSizeBytes { get; set; } = 1000;
 

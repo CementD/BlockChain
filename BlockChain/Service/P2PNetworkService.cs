@@ -153,6 +153,11 @@ namespace BlockChain.Service
                     }
                 }
             }
+            if (message.Type != "NEW_BLOCK" && message.Type != "REQUEST_CHAIN" && message.Type != "CHAIN_RESPONSE")
+            {
+                int currentStrikes = _peerStrikes.AddOrUpdate(peerIp, 1, (key, oldValue) => oldValue + 1);
+                Console.WriteLine($"[Firewall WARNING] Unknown protocol message '{message.Type}' from {peerIp}. Strike: {currentStrikes}/{MaxStrikes}");
+            }
         }
 
         public async Task BroadcastBlockAsync(Block block)
