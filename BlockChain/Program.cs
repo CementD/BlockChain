@@ -10,6 +10,7 @@ var blockChain = new BlockChainService(new FileService(myport));
 var displayService = new BlockChainDisplayService();
 var transactionService = new TransactionService();
 var p2pNetworkService = new P2PNetworkService(myport, blockChain, new List<PeerInfo> { new PeerInfo("localhost", nodeport) });
+var merkleTreeAuditor = new MerkleTreeAuditor();
 
 var AliceWallet = new WalletService().GetOrCreateWallet("Alice");
 var BobWallet = new WalletService().GetOrCreateWallet("Bob");
@@ -34,6 +35,7 @@ while (true)
     Console.WriteLine("12. Show Pending txs");
     Console.WriteLine("13. Send Garbage (Strike 1)");
     Console.WriteLine("14. Send Fake Block (Strike 2)");
+    Console.WriteLine("15. Merkle Proof");
     Console.Write("Choose an option: ");
 
     var choice = Console.ReadLine();

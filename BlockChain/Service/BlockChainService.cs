@@ -22,6 +22,8 @@ namespace BlockChain.Service
 
         public int MaxBlockSizeBytes { get; set; } = 1000;
 
+        public int MaxReorgDepth { get; set; } = 5;
+
         private readonly HashingService _hashingService;
         private readonly MiningService _miningService;
         private readonly TransactionService _transactionService;
@@ -178,6 +180,16 @@ namespace BlockChain.Service
                 if (!currentBlock.Hash.StartsWith(new string('0', currentBlock.Difficulty)))
                     return false;
 
+                if (currentBlock.Timestamp <= previousBlock.Timestamp)
+                {
+                    return false;
+                }
+
+                if (currentBlock.Timestamp > DateTime.Now.AddHours(2))
+                {
+                    return false;
+                }
+
                 var transactionsSeenIds = new List<int>();
                 foreach (var transaction in currentBlock.Transactions)
                 {
@@ -206,6 +218,15 @@ namespace BlockChain.Service
                     return false;
                 if (!currentBlock.Hash.StartsWith(new string('0', currentBlock.Difficulty)))
                     return false;
+                if (currentBlock.Timestamp <= previousBlock.Timestamp)
+                {
+                    return false;
+                }
+
+                if (currentBlock.Timestamp > DateTime.Now.AddHours(2))
+                {
+                    return false;
+                }
 
                 var transactionsSeenIds = new List<int>();
                 foreach (var transaction in currentBlock.Transactions)
@@ -381,6 +402,16 @@ namespace BlockChain.Service
                 return false;
             }
 
+            if (block.Timestamp <= lastBlock.Timestamp)
+            {
+                return false;
+            }
+
+            if (block.Timestamp > DateTime.Now.AddHours(2))
+            {
+                return false;
+            }
+
             foreach (var transaction in block.Transactions)
             {
                 if (!_transactionService.ValidateTransaction(transaction).isValid)
@@ -413,6 +444,13 @@ namespace BlockChain.Service
                         forkPoint = i - 1;
                         break;
                     }
+                }
+
+                int depth = Chain.Count - forkPoint;
+                if (depth > MaxReorgDepth)
+                {
+                    Console.WriteLine($"[Firewall WARNING] Reorganization depth {depth} exceeds maximum allowed {MaxReorgDepth}. Rejecting new chain.");
+                    return false;
                 }
 
                 var chainTransactions = new List<Transaction>();

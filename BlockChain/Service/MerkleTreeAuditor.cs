@@ -40,7 +40,7 @@ namespace BlockChain.Service
                     string combinedHash = _hashingService.ComputeSha256(currentLevel[i] + currentLevel[i + 1]);
                     nextLevel.Add(combinedHash);
                 }
-                tree.Add(nextLevel);    
+                tree.Add(nextLevel);
                 currentLevel = nextLevel;
             }
 
@@ -122,11 +122,65 @@ namespace BlockChain.Service
                     string txId = originalBlock.Transactions[i].Id.ToString() ?? "N/A";
 
                     Console.WriteLine($"Увага! Транзакція з індексом [{i}] (ID: [{txId}]) була підроблена!");
-и:
                     Console.WriteLine($"  -> Expected hash: {originalLeaves[i].Substring(0, 8)}...");
                     Console.WriteLine($"  -> Received hash:  {tamperedLeaves[i].Substring(0, 8)}...");
                 }
             }
+        }
+
+        public List<string> MerkleProof(List<List<string>> fullTree, string targetHash)
+        {
+            List<string> proof = new List<string>();
+
+            if (fullTree == null || fullTree.Count == 0)
+                return proof;
+
+            int index = fullTree[0].FindIndex(h => h == targetHash);
+            if (index == -1)
+                return proof;
+
+            proof.Add(index.ToString());
+
+            for (int i = 0; i < fullTree.Count - 1; i++)
+            {
+                List<string> currentLevel = fullTree[i];
+                int siblingIndex = (index % 2 == 0) ? index + 1 : index - 1;
+
+                if (siblingIndex < currentLevel.Count)
+                {
+                    proof.Add(currentLevel[siblingIndex]);
+                }
+                else
+                {
+                    proof.Add(currentLevel[index]);
+                }
+
+                index /= 2;
+            }
+            return proof;
+        }
+
+        public bool VerifyMerkleProof(string targetHash, List<string> proof, string expectedRoot)
+        {
+            if (proof == null || proof.Count == 0)
+                return false;
+
+            int index = int.Parse(proof[0]);
+            string computedHash = targetHash;
+            for (int i = 1; i < proof.Count; i++)
+            {
+                string siblingHash = proof[i];
+                if (index % 2 == 0)
+                {
+                    computedHash = _hashingService.ComputeSha256(computedHash + siblingHash);
+                }
+                else
+                {
+                    computedHash = _hashingService.ComputeSha256(siblingHash + computedHash);
+                }
+                index /= 2;
+            }
+            return computedHash == expectedRoot;
         }
     }
 }
